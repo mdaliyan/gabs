@@ -5,8 +5,8 @@ golang. It's pretty much just a helpful wrapper around the golang
 `json.Marshal/json.Unmarshal` behaviour and `map[string]interface{}` objects.
 It does nothing spectacular except for being fabulous.
 
-This is a fork of `github.com/Jeffail/gabs` with mutex lock implanted so it
-could be used safely in go routines.
+**Attention:** This is a fork of `github.com/Jeffail/gabs` with mutex lock implanted so it
+could be used safely in go routines. I try to keep it updated with the main repository. But if you see a delay please remind me.
 
 https://godoc.org/github.com/mdaliyan/gabs
 
