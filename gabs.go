@@ -30,9 +30,10 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"sync"
 )
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------
 
 var (
 	// ErrOutOfBounds - Index out of bounds.
@@ -63,12 +64,13 @@ var (
 	ErrInvalidBuffer = errors.New("input buffer contained invalid JSON")
 )
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------
 
 // Container - an internal structure that holds a reference to the core interface map of the parsed
 // json. Use this container to move context.
 type Container struct {
 	object interface{}
+	lock   sync.RWMutex
 }
 
 // Data - Return the contained data as an interface{}.
@@ -79,7 +81,7 @@ func (g *Container) Data() interface{} {
 	return g.object
 }
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------
 
 // Path - Search for a value using dot notation.
 func (g *Container) Path(path string) *Container {
@@ -92,32 +94,39 @@ func (g *Container) Path(path string) *Container {
 // all of the results in a JSON array.
 func (g *Container) Search(hierarchy ...string) *Container {
 	var object interface{}
-
+	if g == nil {
+		return nil
+	}
+	g.lock.Lock()
 	object = g.Data()
 	for target := 0; target < len(hierarchy); target++ {
 		if mmap, ok := object.(map[string]interface{}); ok {
 			object, ok = mmap[hierarchy[target]]
 			if !ok {
+				g.lock.Unlock()
 				return nil
 			}
 		} else if marray, ok := object.([]interface{}); ok {
 			tmpArray := []interface{}{}
 			for _, val := range marray {
-				tmpGabs := &Container{val}
+				tmpGabs := &Container{object: val}
 				res := tmpGabs.Search(hierarchy[target:]...)
 				if res != nil {
 					tmpArray = append(tmpArray, res.Data())
 				}
 			}
+			g.lock.Unlock()
 			if len(tmpArray) == 0 {
 				return nil
 			}
-			return &Container{tmpArray}
+			return &Container{object: tmpArray}
 		} else {
+			g.lock.Unlock()
 			return nil
 		}
 	}
-	return &Container{object}
+	g.lock.Unlock()
+	return &Container{object: object}
 }
 
 // S - Shorthand method, does the same thing as Search.
@@ -137,56 +146,69 @@ func (g *Container) ExistsP(path string) bool {
 
 // Index - Attempt to find and return an object within a JSON array by index.
 func (g *Container) Index(index int) *Container {
+	g.lock.Lock()
 	if array, ok := g.Data().([]interface{}); ok {
 		if index >= len(array) {
-			return &Container{nil}
+			g.lock.Unlock()
+			return &Container{object: nil}
 		}
-		return &Container{array[index]}
+		g.lock.Unlock()
+		return &Container{object: array[index]}
 	}
-	return &Container{nil}
+	g.lock.Unlock()
+	return &Container{object: nil}
 }
 
 // Children - Return a slice of all the children of the array. This also works for objects, however,
 // the children returned for an object will NOT be in order and you lose the names of the returned
 // objects this way.
 func (g *Container) Children() ([]*Container, error) {
+	g.lock.Lock()
 	if array, ok := g.Data().([]interface{}); ok {
 		children := make([]*Container, len(array))
 		for i := 0; i < len(array); i++ {
-			children[i] = &Container{array[i]}
+			children[i] = &Container{object: array[i]}
 		}
+		g.lock.Unlock()
 		return children, nil
 	}
 	if mmap, ok := g.Data().(map[string]interface{}); ok {
 		children := []*Container{}
 		for _, obj := range mmap {
-			children = append(children, &Container{obj})
+			children = append(children, &Container{object: obj})
 		}
+		g.lock.Unlock()
 		return children, nil
 	}
+	g.lock.Unlock()
 	return nil, ErrNotObjOrArray
 }
 
 // ChildrenMap - Return a map of all the children of an object.
 func (g *Container) ChildrenMap() (map[string]*Container, error) {
+	g.lock.Lock()
 	if mmap, ok := g.Data().(map[string]interface{}); ok {
 		children := map[string]*Container{}
 		for name, obj := range mmap {
-			children[name] = &Container{obj}
+			children[name] = &Container{object: obj}
 		}
+		g.lock.Unlock()
 		return children, nil
 	}
+	g.lock.Unlock()
 	return nil, ErrNotObj
 }
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------
 
 // Set - Set the value of a field at a JSON path, any parts of the path that do not exist will be
 // constructed, and if a collision occurs with a non object type whilst iterating the path an error
 // is returned.
 func (g *Container) Set(value interface{}, path ...string) (*Container, error) {
+	g.lock.Lock()
 	if len(path) == 0 {
 		g.object = value
+		g.lock.Unlock()
 		return g, nil
 	}
 	var object interface{}
@@ -203,10 +225,12 @@ func (g *Container) Set(value interface{}, path ...string) (*Container, error) {
 			}
 			object = mmap[path[target]]
 		} else {
-			return &Container{nil}, ErrPathCollision
+			g.lock.Unlock()
+			return &Container{object: nil}, ErrPathCollision
 		}
 	}
-	return &Container{object}, nil
+	g.lock.Unlock()
+	return &Container{object: object}, nil
 }
 
 // SetP - Does the same as Set, but using a dot notation JSON path.
@@ -216,14 +240,18 @@ func (g *Container) SetP(value interface{}, path string) (*Container, error) {
 
 // SetIndex - Set a value of an array element based on the index.
 func (g *Container) SetIndex(value interface{}, index int) (*Container, error) {
+	g.lock.Lock()
 	if array, ok := g.Data().([]interface{}); ok {
 		if index >= len(array) {
-			return &Container{nil}, ErrOutOfBounds
+			g.lock.Unlock()
+			return &Container{object: nil}, ErrOutOfBounds
 		}
 		array[index] = value
-		return &Container{array[index]}, nil
+		g.lock.Unlock()
+		return &Container{object: array[index]}, nil
 	}
-	return &Container{nil}, ErrNotArray
+	g.lock.Unlock()
+	return &Container{object: nil}, ErrNotArray
 }
 
 // Object - Create a new JSON object at a path. Returns an error if the path contains a collision
@@ -360,7 +388,7 @@ func (g *Container) Merge(toMerge *Container) error {
 	return nil
 }
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------
 
 /*
 Array modification/search - Keeping these options simple right now, no need for anything more
@@ -417,16 +445,16 @@ func (g *Container) ArrayRemoveP(index int, path string) error {
 // ArrayElement - Access an element from a JSON array.
 func (g *Container) ArrayElement(index int, path ...string) (*Container, error) {
 	if index < 0 {
-		return &Container{nil}, ErrOutOfBounds
+		return &Container{object: nil}, ErrOutOfBounds
 	}
 	array, ok := g.Search(path...).Data().([]interface{})
 	if !ok {
-		return &Container{nil}, ErrNotArray
+		return &Container{object: nil}, ErrNotArray
 	}
 	if index < len(array) {
-		return &Container{array[index]}, nil
+		return &Container{object: array[index]}, nil
 	}
-	return &Container{nil}, ErrOutOfBounds
+	return &Container{object: nil}, ErrOutOfBounds
 }
 
 // ArrayElementP - Access an element from a JSON array using a dot notation JSON path.
@@ -447,13 +475,13 @@ func (g *Container) ArrayCountP(path string) (int, error) {
 	return g.ArrayCount(strings.Split(path, ".")...)
 }
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------
 
 // Bytes - Converts the contained object back to a JSON []byte blob.
 func (g *Container) Bytes() []byte {
 	if g.Data() != nil {
-		if bytes, err := json.Marshal(g.object); err == nil {
-			return bytes
+		if b, err := json.Marshal(g.object); err == nil {
+			return b
 		}
 	}
 	return []byte("{}")
@@ -462,8 +490,8 @@ func (g *Container) Bytes() []byte {
 // BytesIndent - Converts the contained object to a JSON []byte blob formatted with prefix, indent.
 func (g *Container) BytesIndent(prefix string, indent string) []byte {
 	if g.object != nil {
-		if bytes, err := json.MarshalIndent(g.object, prefix, indent); err == nil {
-			return bytes
+		if b, err := json.MarshalIndent(g.object, prefix, indent); err == nil {
+			return b
 		}
 	}
 	return []byte("{}")
@@ -519,12 +547,12 @@ func (g *Container) EncodeJSON(encodeOpts ...EncodeOpt) []byte {
 
 // New - Create a new gabs JSON object.
 func New() *Container {
-	return &Container{map[string]interface{}{}}
+	return &Container{object: map[string]interface{}{}}
 }
 
 // Consume - Gobble up an already converted JSON object, or a fresh map[string]interface{} object.
 func Consume(root interface{}) (*Container, error) {
-	return &Container{root}, nil
+	return &Container{object: root}, nil
 }
 
 // ParseJSON - Convert a string into a representation of the parsed JSON.
@@ -578,4 +606,4 @@ func ParseJSONBuffer(buffer io.Reader) (*Container, error) {
 	return &gabs, nil
 }
 
-//--------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------

@@ -5,12 +5,15 @@ golang. It's pretty much just a helpful wrapper around the golang
 `json.Marshal/json.Unmarshal` behaviour and `map[string]interface{}` objects.
 It does nothing spectacular except for being fabulous.
 
-https://godoc.org/github.com/Jeffail/gabs
+This is a fork of `github.com/Jeffail/gabs` with mutex lock implanted so it
+could be used safely in go routines.
+
+https://godoc.org/github.com/mdaliyan/gabs
 
 ## How to install:
 
 ``` bash
-go get github.com/Jeffail/gabs
+go get github.com/mdaliyan/gabs
 ```
 
 ## How to use
@@ -20,7 +23,7 @@ go get github.com/Jeffail/gabs
 ``` go
 ...
 
-import "github.com/Jeffail/gabs"
+import "github.com/mdaliyan/gabs"
 
 jsonParsed, err := gabs.ParseJSON([]byte(`{
 	"outter":{
