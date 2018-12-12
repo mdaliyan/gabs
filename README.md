@@ -1,5 +1,7 @@
 ![Gabs](gabs_logo.png "Gabs")
 
+[![Build Status](https://travis-ci.org/mdaliyan/gabs.svg?branch=master)](https://travis-ci.org/mdaliyan/gabs)
+
 Gabs is a small utility for dealing with dynamic or unknown JSON structures in
 golang. It's pretty much just a helpful wrapper around the golang
 `json.Marshal/json.Unmarshal` behaviour and `map[string]interface{}` objects.
@@ -7,6 +9,7 @@ It does nothing spectacular except for being fabulous.
 
 **Attention:** This is a fork of `github.com/Jeffail/gabs` with mutex lock implanted so it
 could be used safely in go routines. I try to keep it updated with the main repository. But if you see a delay please remind me.
+
 
 https://godoc.org/github.com/mdaliyan/gabs
 
