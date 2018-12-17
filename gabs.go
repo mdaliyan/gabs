@@ -205,6 +205,9 @@ func (g *Container) ChildrenMap() (map[string]*Container, error) {
 // constructed, and if a collision occurs with a non object type whilst iterating the path an error
 // is returned.
 func (g *Container) Set(value interface{}, path ...string) (*Container, error) {
+	if g == nil {
+		g = &Container{object: nil}
+	}
 	g.lock.Lock()
 	if len(path) == 0 {
 		g.object = value
